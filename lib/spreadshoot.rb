@@ -4,7 +4,7 @@ require 'fileutils'
 class Spreadshoot
   attr_reader :xml, :worksheets
 
-  def initialize name, options = {}, &block
+  def initialize options = {}, &block
     @worksheets = []
     @ss = {}
     @rels = {}
@@ -185,7 +185,7 @@ class Spreadshoot
     # 	</sheetData>
     # </worksheet>
 
-    attr_reader :title, :xml, :sheet_data, :spreadsheet
+    attr_reader :title, :xml, :sheet_data, :spreadsheet, :row_index
     def initialize spreadsheet, title, options = {}, &block
       @spreadsheet = spreadsheet
       @title = title
@@ -204,6 +204,8 @@ class Spreadshoot
     end
 
     def row options = {}
+      @row_index ||= 0
+      @row_index += 1
       @sheet_data.row do |xr|
 
         row = Row.new(self, xr, options)
@@ -213,20 +215,41 @@ class Spreadshoot
   end
 
   class Row
+    attr_reader :col_index
+
     def initialize worksheet, xr, options = {}
       @worksheet = worksheet
       @spreadsheet = worksheet.spreadsheet
       @xr = xr
     end
 
-    def cell value, options = {}
+    def cell value = nil, options = {}
+      @col_index ||= 0
+      @col_index += 1
       case value
       when String
         i = @spreadsheet.ss_index(value)
         @xr.c(:t => 's'){ |xc| xc.v(i) }
+      when Hash # no value, formula in options
+        options = value
+        @xr.c do |xc|
+          xc.f(options[:formula])
+        end
+      when nil
+        @xr.c
       else
         @xr.c{ |xc| xc.v(value) }
       end
+      "#{Column.alpha_index(@col_index)}#{@worksheet.row_index}"
+    end
+  end
+
+  class Column
+    # maps numeric column indices to letter based:
+    # 1 -> 'A', 2 -> 'B', 27 -> 'AA' and so on
+    def self.alpha_index i
+      @alpha_indices ||= ('A'..'ZZ').to_a
+      @alpha_indices[i-1]
     end
   end
 

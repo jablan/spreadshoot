@@ -1,19 +1,20 @@
 require 'spreadshoot'
 
-spreadsheet = Spreadshoot.new('title') do |s|
+spreadsheet = Spreadshoot.new do |s|
   s.worksheet('Foobar') do |w|
     w.row do |r|
-      r.cell('foo')
-      r.cell(2, :name => :foo)
+      r.cell 'foo'
+      @foo = r.cell 2
     end
     w.row do |r|
-      r.cell('bar')
-      r.cell(3, :name => :bar)
+      r.cell 'bar'
+      @bar = r.cell 3
     end
     w.row # empty one
     w.row(:line => :above, :bold => true) do |r|
-      r.cell('total')
-      r.cell(:formula => 'foo + bar')
+      r.cell 'total'
+      r.cell # empty cell
+      r.cell :formula => "#{@foo} + #{@bar}"
     end
   end
 end
