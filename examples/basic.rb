@@ -10,6 +10,7 @@ spreadsheet = Spreadshoot.new('title') do |s|
       r.cell('bar')
       r.cell(3, :name => :bar)
     end
+    w.row # empty one
     w.row(:line => :above, :bold => true) do |r|
       r.cell('total')
       r.cell(:formula => 'foo + bar')
@@ -18,4 +19,4 @@ spreadsheet = Spreadshoot.new('title') do |s|
 end
 
 spreadsheet.dump
-#spreadsheet.save('title.xlsx')
+spreadsheet.save(ARGV[0])
