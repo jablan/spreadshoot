@@ -2,7 +2,6 @@ require 'builder'
 require 'fileutils'
 
 class Spreadshoot
-  attr_reader :xml, :worksheets
 
   def initialize options = {}, &block
     @worksheets = []
@@ -130,6 +129,7 @@ class Spreadshoot
 
   def save filename
     dir = '/tmp/spreadshoot/'
+    FileUtils.rm_rf(dir)
     FileUtils.mkdir_p(dir)
     FileUtils.mkdir_p(File.join(dir, '_rels'))
     FileUtils.mkdir_p(File.join(dir, 'xl', 'worksheets'))
@@ -157,6 +157,7 @@ class Spreadshoot
 
     filename = File.absolute_path(filename)
     FileUtils.chdir(dir)
+    File.delete(filename) if File.exists?(filename)
     # zip the result
     puts `zip -r #{filename} ./`
 #    FileUtils.rmdir_rf(dir)
@@ -185,75 +186,150 @@ class Spreadshoot
     # 	</sheetData>
     # </worksheet>
 
-    attr_reader :title, :xml, :sheet_data, :spreadsheet, :row_index
+    attr_reader :title, :xml, :spreadsheet, :row_index, :col_index, :cells
     def initialize spreadsheet, title, options = {}, &block
+      @cells = {}
       @spreadsheet = spreadsheet
       @title = title
+      @options = options
+      @row_index = 0
+      @col_index = 0
+      # default table, if none defined
+      @current_table = Table.new(self, options)
 
-      @builder = Builder::XmlMarkup.new
-      @xml = @builder.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
-        ws.sheetData do |sd|
-          @sheet_data = sd
-          yield self
-        end
-      end
+      yield self
     end
 
     def to_s
-      @xml
+      @xml ||= Builder::XmlMarkup.new.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
+        ws.sheetData do |sd|
+          @cells.keys.sort.each do |row|
+            sd.row(:r => row+1) do |xr|
+
+              @cells[row].keys.sort.each do |col|
+                cell = @cells[row][col]
+                cell.output(xr)
+              end
+            end
+          end
+        end
+      end
+    end
+
+    def row options = {}, &block
+      @current_table.row options, &block
+      @row_index += 1
+    end
+
+    def table options = {}
+      @current_table = table = Table.new(self, options)
+      yield table
+      @row_index += table.row_index
+      @col_index += table.col_index
+      @current_table = Table.new(self, @options) # preparing one in case row directly called next
+      table
+    end
+  end
+
+
+  class Table
+    attr_reader :worksheet, :direction
+    attr_accessor :col_index, :row_index
+
+    def initialize worksheet, options = {}
+      @worksheet = worksheet
+      @options = options
+      @direction = options[:direction] || :vertical
+      @row_index = 0
+      @col_index = 0
+      @row_topleft = options[:row_topleft] || @worksheet.row_index
+      @col_topleft = options[:col_topleft] || @worksheet.col_index
     end
 
     def row options = {}
-      @row_index ||= 0
-      @row_index += 1
-      @sheet_data.row do |xr|
+      row = Row.new(self, options)
+      yield(row) if block_given?
 
-        row = Row.new(self, xr, options)
-        yield(row) if block_given?
+      if @direction == :vertical
+        @row_index += 1
+        @col_index = 0
+      else
+        @col_index += 1
+        @row_index = 0
       end
+      row
     end
+
+    def current_row
+      @row_topleft + @row_index
+    end
+
+    def current_col
+      @col_topleft + @col_index
+    end
+
+    # alphanumeric representation of coordinates
+    def coords
+      "#{Cell.alpha_index(current_col)}#{current_row+1}"
+    end
+
   end
 
   class Row
-    attr_reader :col_index
-
-    def initialize worksheet, xr, options = {}
-      @worksheet = worksheet
-      @spreadsheet = worksheet.spreadsheet
-      @xr = xr
+    def initialize table, options = {}
+      @table = table
     end
 
     def cell value = nil, options = {}
-      @col_index ||= 0
-      @col_index += 1
-      case value
-      when String
-        i = @spreadsheet.ss_index(value)
-        @xr.c(:t => 's'){ |xc| xc.v(i) }
-      when Hash # no value, formula in options
-        options = value
-        @xr.c do |xc|
-          xc.f(options[:formula])
-        end
-      when nil
-        @xr.c
+      cell = Cell.new(@table, value, options)
+      @table.worksheet.cells[@table.current_row] ||= {}
+      @table.worksheet.cells[@table.current_row][@table.current_col] = cell
+      if @table.direction == :vertical
+        @table.col_index += 1
       else
-        @xr.c{ |xc| xc.v(value) }
+        @table.row_index += 1
       end
-      "#{Column.alpha_index(@col_index)}#{@worksheet.row_index}"
-    end
-  end
-
-  class Column
-    # maps numeric column indices to letter based:
-    # 1 -> 'A', 2 -> 'B', 27 -> 'AA' and so on
-    def self.alpha_index i
-      @alpha_indices ||= ('A'..'ZZ').to_a
-      @alpha_indices[i-1]
+      cell
     end
   end
 
   class Cell
+    # maps numeric column indices to letter based:
+    # 1 -> 'A', 2 -> 'B', 27 -> 'AA' and so on
+    def self.alpha_index i
+      @alpha_indices ||= ('A'..'ZZ').to_a
+      @alpha_indices[i]
+    end
+
+    def initialize table, value, options = {}
+      @table = table
+      @value = value
+      @options = options
+      @coords = @table.coords
+    end
+
+    # outputs the cell into the resulting xml
+    def output xn_parent
+      r = {:r => @coords}
+      case @value
+      when String
+        i = @table.worksheet.spreadsheet.ss_index(@value)
+        xn_parent.c(r.merge(:t => 's')){ |xc| xc.v(i) }
+      when Hash # no @value, formula in options
+        @options = @value
+        xn_parent.c(r) do |xc|
+          xc.f(@options[:formula])
+        end
+      when nil
+        xn_parent.c(r)
+      else
+        xn_parent.c(r){ |xc| xc.v(@value) }
+      end
+    end
+
+    def to_s
+      @coords
+    end
 
   end
 
