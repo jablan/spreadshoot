@@ -11,7 +11,7 @@ spreadsheet = Spreadshoot.new do |s|
       @bar = r.cell 3
     end
     w.row # empty one
-    w.row(:line => :above, :bold => true) do |r|
+    w.row(:border => :top, :bold => true) do |r|
       r.cell 'total'
       r.cell # empty cell
       r.cell :formula => "#{@foo} + #{@bar}"
@@ -19,7 +19,7 @@ spreadsheet = Spreadshoot.new do |s|
   end
 
   s.worksheet('Tables') do |w|
-    w.table do |t|
+    w.table(:direction => :horizontal) do |t|
       t.row do |r|
         r.cell 'foo'
         @foo = r.cell 2

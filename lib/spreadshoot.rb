@@ -1,3 +1,4 @@
+require 'set'
 require 'builder'
 require 'fileutils'
 
@@ -6,7 +7,9 @@ class Spreadshoot
   def initialize options = {}, &block
     @worksheets = []
     @ss = {}
-    @rels = {}
+    @borders = {}
+    @styles = {}
+    @components = Set.new
     yield(self)
   end
 
@@ -23,10 +26,38 @@ class Spreadshoot
   # ...12 more items ...
   # </sst>
   def ss_index string
-    @rels[:ss] ||= []
+    @components << :ss
     unless i = @ss[string]
       i = @ss.length
       @ss[string] = i
+    end
+    i
+  end
+
+  def border borders
+    borders = [borders] unless borders.is_a?(Array)
+    borders.sort!
+    unless i = @borders[borders]
+      i = @borders.length
+      @borders[borders] = i
+    end
+    i
+  end
+
+  def style options = {}
+    @components << :styles
+    style = options.each_with_object({}) do |(option, value), acc|
+      case option
+      when :border
+        acc[:border] = self.border(value)
+      end
+    end
+    return nil if style.empty?
+    p style
+
+    unless i = @styles[style]
+      i = @styles.length
+      @styles[style] = i
     end
     i
   end
@@ -85,6 +116,7 @@ class Spreadshoot
       xt.Default(:Extension => "vml", :ContentType => "application/vnd.openxmlformats-officedocument.vmlDrawing")
       xt.Override :PartName => "/xl/workbook.xml", :ContentType => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
       xt.Override :PartName => "/xl/sharedStrings.xml", :ContentType => "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"
+      xt.Override :PartName => "/xl/styles.xml", :ContentType => "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
       @worksheets.count.times do |i|
         xt.Override :PartName => "/xl/worksheets/sheet#{i+1}.xml", :ContentType => "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
       end
@@ -124,6 +156,54 @@ class Spreadshoot
         rs.Relationship :Id => "rId#{i+1}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet", :Target => "worksheets/sheet#{i+1}.xml"
       end
       rs.Relationship :Id => "rId#{count+1}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings", :Target => "sharedStrings.xml"
+      rs.Relationship(:Id => "rId#{count+2}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", :Target => "styles.xml") if @components.member?(:styles)
+    end
+  end
+
+  def styles
+    Builder::XmlMarkup.new.styleSheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |xs|
+      xs.fonts do |xf|
+        xf.font
+      end
+
+      xs.fills{|xf| xf.fill{|x| x.patternFill(:patternType => 'none')}}
+
+      xs.borders do |xbs|
+        xbs.border do |xb|
+          [:left, :right, :top, :bottom, :diagonal].each do |kind|
+            xb.tag!(kind)
+          end
+        end
+        @borders.keys.each do |border_set|
+          xbs.border do |xb|
+            [:left, :right, :top, :bottom, :diagonal].each do |kind|
+              if border_set.member?(kind)
+                xb.tag!(kind, :style => 'thin') do |x|
+                  x.color(:rgb => 'FF000000')
+                end
+              else
+                xb.tag!(kind)
+              end
+            end
+          end
+        end
+      end
+
+      xs.cellStyleXfs do |xcsx|
+        xcsx.xf(:fillId => 0, :borderId => 0, :numFmtId => 0)
+      end
+
+      xs.cellXfs do |xcx|
+        xcx.xf(:fillId => 0, :numFmtId => 0, :borderId => 0, :xfId => 0)
+        @styles.keys.each do |style|
+          # TODO: calculate this dynamically
+          xcx.xf(:fillId => 0, :numFmtId => 0, :borderId => style[:border] + 1, :xfId => 0, :applyBorder => 1)
+        end
+      end
+
+#      xs.cellStyles do |xcs|
+#        xcs.cellStyle(:name => "Normal", :xfId => "0", :builtinId => "0")
+#      end
     end
   end
 
@@ -145,7 +225,10 @@ class Spreadshoot
     end
     File.open(File.join(dir, 'xl', 'sharedStrings.xml'), 'w') do |f|
       f.write shared_strings
-    end
+    end if @components.member?(:ss)
+    File.open(File.join(dir, 'xl', 'styles.xml'), 'w') do |f|
+      f.write styles
+    end if @components.member?(:styles)
     File.open(File.join(dir, 'xl', '_rels', 'workbook.xml.rels'), 'w') do |f|
       f.write xl_rels
     end
@@ -173,6 +256,9 @@ class Spreadshoot
 
     puts '==='
     puts shared_strings
+
+    puts '==='
+    puts styles
   end
 
   class Worksheet
@@ -200,6 +286,7 @@ class Spreadshoot
       yield self
     end
 
+    # outputs the worksheet as OOXML
     def to_s
       @xml ||= Builder::XmlMarkup.new.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
         ws.sheetData do |sd|
@@ -217,15 +304,16 @@ class Spreadshoot
     end
 
     def row options = {}, &block
-      @current_table.row options, &block
+      row = @current_table.row options, &block
       @row_index += 1
+      row
     end
 
     def table options = {}
       @current_table = table = Table.new(self, options)
       yield table
-      @row_index += table.row_index
-      @col_index += table.col_index
+      @row_index += table.row_max
+      @col_index = 0
       @current_table = Table.new(self, @options) # preparing one in case row directly called next
       table
     end
@@ -233,8 +321,7 @@ class Spreadshoot
 
 
   class Table
-    attr_reader :worksheet, :direction
-    attr_accessor :col_index, :row_index
+    attr_reader :worksheet, :direction, :col_max, :row_max, :col_index, :row_index
 
     def initialize worksheet, options = {}
       @worksheet = worksheet
@@ -242,8 +329,20 @@ class Spreadshoot
       @direction = options[:direction] || :vertical
       @row_index = 0
       @col_index = 0
+      @row_max = 0
+      @col_max = 0
       @row_topleft = options[:row_topleft] || @worksheet.row_index
       @col_topleft = options[:col_topleft] || @worksheet.col_index
+    end
+
+    def col_index= val
+      @col_max = val if val > @col_max
+      @col_index = val
+    end
+
+    def row_index= val
+      @row_max = val if val > @row_max
+      @row_index = val
     end
 
     def row options = {}
@@ -251,11 +350,11 @@ class Spreadshoot
       yield(row) if block_given?
 
       if @direction == :vertical
-        @row_index += 1
-        @col_index = 0
+        self.row_index += 1
+        self.col_index = 0
       else
-        @col_index += 1
-        @row_index = 0
+        self.col_index += 1
+        self.row_index = 0
       end
       row
     end
@@ -278,10 +377,11 @@ class Spreadshoot
   class Row
     def initialize table, options = {}
       @table = table
+      @options = options
     end
 
     def cell value = nil, options = {}
-      cell = Cell.new(@table, value, options)
+      cell = Cell.new(@table, value, @options.merge(options))
       @table.worksheet.cells[@table.current_row] ||= {}
       @table.worksheet.cells[@table.current_row][@table.current_col] = cell
       if @table.direction == :vertical
@@ -311,6 +411,9 @@ class Spreadshoot
     # outputs the cell into the resulting xml
     def output xn_parent
       r = {:r => @coords}
+      if style = @table.worksheet.spreadsheet.style(@options)
+        r.merge!(:s => style + 1)
+      end
       case @value
       when String
         i = @table.worksheet.spreadsheet.ss_index(@value)
