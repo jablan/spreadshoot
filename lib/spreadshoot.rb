@@ -53,7 +53,6 @@ class Spreadshoot
       end
     end
     return nil if style.empty?
-    p style
 
     unless i = @styles[style]
       i = @styles.length
@@ -166,7 +165,11 @@ class Spreadshoot
         xf.font
       end
 
-      xs.fills{|xf| xf.fill{|x| x.patternFill(:patternType => 'none')}}
+      xs.fills do |xf|
+        xf.fill do |x|
+          x.patternFill(:patternType => 'none')
+        end
+      end
 
       xs.borders do |xbs|
         xbs.border do |xb|
