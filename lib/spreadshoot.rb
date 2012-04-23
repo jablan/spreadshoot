@@ -4,6 +4,7 @@ require 'fileutils'
 
 class Spreadshoot
 
+  # Create a new sheet, with given default formatting options
   def initialize options = {}, &block
     @worksheets = []
     @ss = {}
@@ -13,18 +14,7 @@ class Spreadshoot
     yield(self)
   end
 
-  # <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  # <si>
-  # <t>Region</t>
-  # </si>
-  # <si>
-  # <t>Sales Person</t>
-  # </si>
-  # <si>
-  # <t>Sales Quota</t>
-  # </si>
-  # ...12 more items ...
-  # </sst>
+  # Gets the shared index of a given string
   def ss_index string
     @components << :ss
     unless i = @ss[string]
@@ -34,6 +24,7 @@ class Spreadshoot
     i
   end
 
+  # gets the shared index of a border set (one or more of :top, :bottom, :left, :right)
   def border borders
     borders = [borders] unless borders.is_a?(Array)
     borders.sort!
@@ -44,12 +35,15 @@ class Spreadshoot
     i
   end
 
+  # gets the shared index of a cell style (given by options hash)
   def style options = {}
     @components << :styles
     style = options.each_with_object({}) do |(option, value), acc|
       case option
       when :border
         acc[:border] = self.border(value)
+      when :align
+        acc[:align] = value
       end
     end
     return nil if style.empty?
@@ -61,11 +55,71 @@ class Spreadshoot
     i
   end
 
+  # Create a new worksheet within a spreadsheet
   def worksheet title, options = {}, &block
     ws = Worksheet.new(self, title, options, &block)
     @worksheets << ws
   end
 
+  # Saves the spreadsheet to an XLSX file with a given name
+  def save filename
+    dir = '/tmp/spreadshoot/'
+    FileUtils.rm_rf(dir)
+    FileUtils.mkdir_p(dir)
+    FileUtils.mkdir_p(File.join(dir, '_rels'))
+    FileUtils.mkdir_p(File.join(dir, 'xl', 'worksheets'))
+    FileUtils.mkdir_p(File.join(dir, 'xl', '_rels'))
+    File.open(File.join(dir, '[Content_Types].xml'), 'w') do |f|
+      f.write content_types
+    end
+    File.open(File.join(dir, '_rels', '.rels'), 'w') do |f|
+      f.write rels
+    end
+    File.open(File.join(dir, 'xl', 'workbook.xml'), 'w') do |f|
+      f.write workbook
+    end
+    File.open(File.join(dir, 'xl', 'sharedStrings.xml'), 'w') do |f|
+      f.write shared_strings
+    end if @components.member?(:ss)
+    File.open(File.join(dir, 'xl', 'styles.xml'), 'w') do |f|
+      f.write styles
+    end if @components.member?(:styles)
+    File.open(File.join(dir, 'xl', '_rels', 'workbook.xml.rels'), 'w') do |f|
+      f.write xl_rels
+    end
+    @worksheets.each_with_index do |ws, i|
+      File.open(File.join(dir, 'xl', 'worksheets', "sheet#{i+1}.xml"), 'w') do |f|
+        f.write(ws)
+      end
+    end
+
+    filename = File.absolute_path(filename)
+    FileUtils.chdir(dir)
+    File.delete(filename) if File.exists?(filename)
+    # zip the result
+    puts `zip -r #{filename} ./`
+#    FileUtils.rmdir_rf(dir)
+  end
+
+  # Dumps main XMLs to the stdout (for debugging purposes)
+  def dump
+    puts @xml
+
+    @worksheets.each do |ws|
+      puts '==='
+      puts ws
+    end
+
+    puts '==='
+    puts shared_strings
+
+    puts '==='
+    puts styles
+  end
+
+  private
+
+  # Outputs final workbook XML
   # <workbook 
   # xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" 
   # xmlns:r="http:// schemas.openxmlformats.org /officeDocument/2006/relationships">
@@ -122,6 +176,18 @@ class Spreadshoot
     end
   end
 
+  # <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  # <si>
+  # <t>Region</t>
+  # </si>
+  # <si>
+  # <t>Sales Person</t>
+  # </si>
+  # <si>
+  # <t>Sales Quota</t>
+  # </si>
+  # ...12 more items ...
+  # </sst>
   def shared_strings
     Builder::XmlMarkup.new.sst(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |xsst|
       @ss.keys.each do |str|
@@ -199,8 +265,17 @@ class Spreadshoot
       xs.cellXfs do |xcx|
         xcx.xf(:fillId => 0, :numFmtId => 0, :borderId => 0, :xfId => 0)
         @styles.keys.each do |style|
-          # TODO: calculate this dynamically
-          xcx.xf(:fillId => 0, :numFmtId => 0, :borderId => style[:border] + 1, :xfId => 0, :applyBorder => 1)
+          align = style[:align]
+          border = style[:border]
+          options = {:fillId => 0, :numFmtId => 0, :xfId => 0} # default
+          options[:applyAlignment] = align ? 1 : 0
+          options[:applyBorder] = border ? 1 : 0
+          options[:borderId] = border ? border + 1 : 0
+          xcx.xf(options) do |xf|
+            if align = style[:align]
+              xf.alignment(:horizontal => align)
+            end
+          end
         end
       end
 
@@ -208,60 +283,6 @@ class Spreadshoot
 #        xcs.cellStyle(:name => "Normal", :xfId => "0", :builtinId => "0")
 #      end
     end
-  end
-
-  def save filename
-    dir = '/tmp/spreadshoot/'
-    FileUtils.rm_rf(dir)
-    FileUtils.mkdir_p(dir)
-    FileUtils.mkdir_p(File.join(dir, '_rels'))
-    FileUtils.mkdir_p(File.join(dir, 'xl', 'worksheets'))
-    FileUtils.mkdir_p(File.join(dir, 'xl', '_rels'))
-    File.open(File.join(dir, '[Content_Types].xml'), 'w') do |f|
-      f.write content_types
-    end
-    File.open(File.join(dir, '_rels', '.rels'), 'w') do |f|
-      f.write rels
-    end
-    File.open(File.join(dir, 'xl', 'workbook.xml'), 'w') do |f|
-      f.write workbook
-    end
-    File.open(File.join(dir, 'xl', 'sharedStrings.xml'), 'w') do |f|
-      f.write shared_strings
-    end if @components.member?(:ss)
-    File.open(File.join(dir, 'xl', 'styles.xml'), 'w') do |f|
-      f.write styles
-    end if @components.member?(:styles)
-    File.open(File.join(dir, 'xl', '_rels', 'workbook.xml.rels'), 'w') do |f|
-      f.write xl_rels
-    end
-    @worksheets.each_with_index do |ws, i|
-      File.open(File.join(dir, 'xl', 'worksheets', "sheet#{i+1}.xml"), 'w') do |f|
-        f.write(ws)
-      end
-    end
-
-    filename = File.absolute_path(filename)
-    FileUtils.chdir(dir)
-    File.delete(filename) if File.exists?(filename)
-    # zip the result
-    puts `zip -r #{filename} ./`
-#    FileUtils.rmdir_rf(dir)
-  end
-
-  def dump
-    puts @xml
-
-    @worksheets.each do |ws|
-      puts '==='
-      puts ws
-    end
-
-    puts '==='
-    puts shared_strings
-
-    puts '==='
-    puts styles
   end
 
   class Worksheet
@@ -323,6 +344,8 @@ class Spreadshoot
   end
 
 
+  # Allows you to group cells to a logical table within a worksheet. Makes putting several tables
+  # to the same worksheet easier.
   class Table
     attr_reader :worksheet, :direction, :col_max, :row_max, :col_index, :row_index
 
@@ -377,6 +400,7 @@ class Spreadshoot
 
   end
 
+  # A row of a table. The table could be horizontal oriented, or vertical oriented.
   class Row
     def initialize table, options = {}
       @table = table
@@ -396,6 +420,7 @@ class Spreadshoot
     end
   end
 
+  # A cell within a row.
   class Cell
     # maps numeric column indices to letter based:
     # 1 -> 'A', 2 -> 'B', 27 -> 'AA' and so on

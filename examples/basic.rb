@@ -12,7 +12,7 @@ spreadsheet = Spreadshoot.new do |s|
     end
     w.row # empty one
     w.row(:border => :top, :bold => true) do |r|
-      r.cell 'total'
+      r.cell('total', :align => :center)
       r.cell # empty cell
       r.cell :formula => "#{@foo} + #{@bar}"
     end
