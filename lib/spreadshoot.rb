@@ -1,4 +1,5 @@
 require 'set'
+require 'date'
 require 'builder'
 require 'fileutils'
 
@@ -9,6 +10,7 @@ class Spreadshoot
     @worksheets = []
     @ss = {}
     @borders = {}
+    @fonts = {}
     @styles = {}
     @components = Set.new
     yield(self)
@@ -35,17 +37,38 @@ class Spreadshoot
     i
   end
 
+  def font options
+    unless i = @fonts[options]
+      i = @fonts.length
+      @fonts[options] = i
+    end
+    i
+  end
+
   # gets the shared index of a cell style (given by options hash)
   def style options = {}
     @components << :styles
+    font = {}
     style = options.each_with_object({}) do |(option, value), acc|
       case option
       when :border
         acc[:border] = self.border(value)
       when :align
         acc[:align] = value
+      when :bold, :italic, :font
+        font[option] = value
+      when :format
+        acc[:format] = case value
+                       when :date
+                         14
+                       when :percent
+                         10
+                       else
+                         value
+                       end
       end
     end
+    style[:font] = self.font(font) unless font.empty?
     return nil if style.empty?
 
     unless i = @styles[style]
@@ -229,6 +252,13 @@ class Spreadshoot
     Builder::XmlMarkup.new.styleSheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |xs|
       xs.fonts do |xf|
         xf.font
+        @fonts.keys.each do |font|
+          xf.font do |x|
+            x.b(:val => 1) if font[:bold]
+            x.i(:val => 1) if font[:italic]
+            x.name(:val => font[:font]) if font[:font]
+          end
+        end
       end
 
       xs.fills do |xf|
@@ -267,10 +297,15 @@ class Spreadshoot
         @styles.keys.each do |style|
           align = style[:align]
           border = style[:border]
-          options = {:fillId => 0, :numFmtId => 0, :xfId => 0} # default
+          font = style[:font]
+          options = {:fillId => 0, :xfId => 0} # default
           options[:applyAlignment] = align ? 1 : 0
           options[:applyBorder] = border ? 1 : 0
           options[:borderId] = border ? border + 1 : 0
+          options[:fontId] = font + 1 if font
+          options[:applyFont] = font ? 1 : 0
+          options[:numFmtId] = style[:format] ? style[:format] : 0
+          options[:applyNumberFormat] = style[:format] ? 1 : 0
           xcx.xf(options) do |xf|
             if align = style[:align]
               xf.alignment(:horizontal => align)
@@ -434,6 +469,7 @@ class Spreadshoot
       @value = value
       @options = options
       @coords = @table.coords
+      @options[:format] ||= :date if @value.is_a?(Date) || @value.is_a?(Time)
     end
 
     # outputs the cell into the resulting xml
@@ -451,6 +487,8 @@ class Spreadshoot
         xn_parent.c(r) do |xc|
           xc.f(@options[:formula])
         end
+      when Date, Time
+        xn_parent.c(r){|xc| xc.v((@value - Date.new(1900,1,1)).to_i)}
       when nil
         xn_parent.c(r)
       else

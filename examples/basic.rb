@@ -1,13 +1,16 @@
 require 'spreadshoot'
+require 'date'
 
 spreadsheet = Spreadshoot.new do |s|
   s.worksheet('Simple') do |w|
     w.row do |r|
+      r.cell Date.today
       r.cell 'foo'
       @foo = r.cell 2
     end
     w.row do |r|
-      r.cell 'bar'
+      r.cell Date.today + 1
+      r.cell 'bar', :font => 'Times New Roman'
       @bar = r.cell 3
     end
     w.row # empty one
