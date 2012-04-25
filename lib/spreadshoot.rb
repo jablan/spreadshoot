@@ -47,7 +47,6 @@ class Spreadshoot
 
   # gets the shared index of a cell style (given by options hash)
   def style options = {}
-    @components << :styles
     font = {}
     style = options.each_with_object({}) do |(option, value), acc|
       case option
@@ -101,19 +100,19 @@ class Spreadshoot
     File.open(File.join(dir, 'xl', 'workbook.xml'), 'w') do |f|
       f.write workbook
     end
+    @worksheets.each_with_index do |ws, i|
+      File.open(File.join(dir, 'xl', 'worksheets', "sheet#{i+1}.xml"), 'w') do |f|
+        f.write(ws)
+      end
+    end
     File.open(File.join(dir, 'xl', 'sharedStrings.xml'), 'w') do |f|
       f.write shared_strings
     end if @components.member?(:ss)
     File.open(File.join(dir, 'xl', 'styles.xml'), 'w') do |f|
       f.write styles
-    end if @components.member?(:styles)
+    end
     File.open(File.join(dir, 'xl', '_rels', 'workbook.xml.rels'), 'w') do |f|
       f.write xl_rels
-    end
-    @worksheets.each_with_index do |ws, i|
-      File.open(File.join(dir, 'xl', 'worksheets', "sheet#{i+1}.xml"), 'w') do |f|
-        f.write(ws)
-      end
     end
 
     filename = File.absolute_path(filename)
@@ -244,7 +243,7 @@ class Spreadshoot
         rs.Relationship :Id => "rId#{i+1}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet", :Target => "worksheets/sheet#{i+1}.xml"
       end
       rs.Relationship :Id => "rId#{count+1}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings", :Target => "sharedStrings.xml"
-      rs.Relationship(:Id => "rId#{count+2}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", :Target => "styles.xml") if @components.member?(:styles)
+      rs.Relationship(:Id => "rId#{count+2}", :Type => "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", :Target => "styles.xml")
     end
   end
 
