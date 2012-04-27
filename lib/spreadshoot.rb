@@ -338,6 +338,7 @@ class Spreadshoot
       @options = options
       @row_index = 0
       @col_index = 0
+      @column_widths = {}
       # default table, if none defined
       @current_table = Table.new(self, options)
 
@@ -347,6 +348,16 @@ class Spreadshoot
     # outputs the worksheet as OOXML
     def to_s
       @xml ||= Builder::XmlMarkup.new.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
+        unless @column_widths.empty?
+          ws.cols do |xcols|
+            @column_widths.keys.sort.each do |i|
+              width = @column_widths[i]
+              params = {:min => i+1, :max => i+1, :bestFit => 1}
+              params.merge!({:customWidth => 1, :width => width}) if width
+              xcols.col(params)
+            end
+          end
+        end
         ws.sheetData do |sd|
           @cells.keys.sort.each do |row|
             sd.row(:r => row+1) do |xr|
@@ -375,7 +386,11 @@ class Spreadshoot
       @current_table = Table.new(self, @options) # preparing one in case row directly called next
       table
     end
-  end
+
+    def set_col_width col, width
+      @column_widths[col] = width
+    end
+  end # Worksheet
 
 
   # Allows you to group cells to a logical table within a worksheet. Makes putting several tables
@@ -457,7 +472,7 @@ class Spreadshoot
   # A cell within a row.
   class Cell
     # maps numeric column indices to letter based:
-    # 1 -> 'A', 2 -> 'B', 27 -> 'AA' and so on
+    # 0 -> 'A', 1 -> 'B', 26 -> 'AA' and so on
     def self.alpha_index i
       @alpha_indices ||= ('A'..'ZZ').to_a
       @alpha_indices[i]
@@ -468,7 +483,16 @@ class Spreadshoot
       @value = value
       @options = options
       @coords = @table.coords
+      @table.worksheet.set_col_width(@table.current_col, @options[:width]) if @options.has_key?(:width)
       @options[:format] ||= :date if @value.is_a?(Date) || @value.is_a?(Time)
+    end
+
+    def current_col
+      @table.current_col
+    end
+
+    def current_row
+      @table.current_row
     end
 
     # outputs the cell into the resulting xml
@@ -487,7 +511,7 @@ class Spreadshoot
           xc.f(@options[:formula])
         end
       when Date, Time
-        xn_parent.c(r){|xc| xc.v((@value - Date.new(1900,1,1)).to_i)}
+        xn_parent.c(r){|xc| xc.v((@value - Date.new(1899,12,30)).to_i)}
       when nil
         xn_parent.c(r)
       else
