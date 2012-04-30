@@ -151,6 +151,7 @@ class Spreadshoot
   # </workbook>
   def workbook
     Builder::XmlMarkup.new.workbook(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main", :"xmlns:r" => "http://schemas.openxmlformats.org/officeDocument/2006/relationships") do |wb|
+      wb.workbookPr(:date1904 => false)
       wb.sheets do |sheets|
         @worksheets.each_with_index do |ws, i|
           sheets.sheet(:name => ws.title, :sheetId => i+1, :"r:id" => "rId#{i+1}")
