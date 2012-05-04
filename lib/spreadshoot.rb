@@ -382,7 +382,7 @@ class Spreadshoot
     def table options = {}
       @current_table = table = Table.new(self, options)
       yield table
-      @row_index += table.row_max
+      @row_index = [@row_index, table.row_topleft + table.row_max].max
       @col_index = 0
       @current_table = Table.new(self, @options) # preparing one in case row directly called next
       table
@@ -397,7 +397,7 @@ class Spreadshoot
   # Allows you to group cells to a logical table within a worksheet. Makes putting several tables
   # to the same worksheet easier.
   class Table
-    attr_reader :worksheet, :direction, :col_max, :row_max, :col_index, :row_index
+    attr_reader :worksheet, :direction, :col_max, :row_max, :col_index, :row_index, :row_topleft, :col_topleft
 
     def initialize worksheet, options = {}
       @worksheet = worksheet
@@ -409,6 +409,11 @@ class Spreadshoot
       @col_max = 0
       @row_topleft = options[:row_topleft] || @worksheet.row_index
       @col_topleft = options[:col_topleft] || @worksheet.col_index
+
+      if tbl = options[:next_to]
+        @row_topleft = tbl.row_topleft
+        @col_topleft = tbl.col_topleft + tbl.col_max
+      end
     end
 
     def col_index= val

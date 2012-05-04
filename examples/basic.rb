@@ -80,6 +80,45 @@ spreadsheet = Spreadshoot.new do |s|
       end
     end
   end
+
+  s.worksheet('Relative positioned tables') do |w|
+    t1 = w.table do |t|
+      3.times do
+        t.row do |r|
+          4.times do
+            r.cell(1)
+          end
+        end
+      end
+    end
+    w.table(:next_to => t1) do |t|
+      5.times do
+        t.row do |r|
+          2.times do
+            r.cell(2)
+          end
+        end
+      end
+    end
+    t3 = w.table do |t|
+      4.times do
+        t.row do |r|
+          5.times do
+            r.cell(3)
+          end
+        end
+      end
+    end
+    w.table(:next_to => t3) do |t|
+      2.times do
+        t.row do |r|
+          2.times do
+            r.cell(4)
+          end
+        end
+      end
+    end
+  end
 end
 
 spreadsheet.dump
