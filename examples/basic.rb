@@ -9,7 +9,7 @@ spreadsheet = Spreadshoot.new do |s|
       @foo = r.cell 2
     end
     w.row do |r|
-      r.cell Date.today + 1
+      r.cell Time.now
       r.cell 'bar', :font => 'Times New Roman'
       @bar = r.cell 3
     end

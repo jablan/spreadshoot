@@ -511,8 +511,10 @@ class Spreadshoot
         xn_parent.c(r) do |xc|
           xc.f(@options[:formula])
         end
-      when Date, Time
+      when Date
         xn_parent.c(r){|xc| xc.v((@value - Date.new(1899,12,30)).to_i)}
+      when Time
+        xn_parent.c(r){|xc| xc.v((@value - Time.new(1899,12,30)) / (24*60*60))}
       when nil
         xn_parent.c(r)
       else
