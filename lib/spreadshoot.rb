@@ -248,6 +248,7 @@ class Spreadshoot
     end
   end
 
+  # Outputs XML describing spreadsheet styles.
   def styles
     Builder::XmlMarkup.new.styleSheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |xs|
       xs.fonts do |xf|
@@ -320,6 +321,7 @@ class Spreadshoot
     end
   end
 
+  # Single worksheet containing one or more tables.
   class Worksheet
     # <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" >
     # 	<sheetData>
@@ -332,7 +334,9 @@ class Spreadshoot
     # </worksheet>
 
     attr_reader :title, :xml, :spreadsheet, :row_index, :col_index, :cells
-    def initialize spreadsheet, title, options = {}, &block
+
+    # Not intended to be called directly. Use Spreadshoot#worksheet to create a worksheet.
+    def initialize spreadsheet, title, options = {}
       @cells = {}
       @spreadsheet = spreadsheet
       @title = title
@@ -346,7 +350,7 @@ class Spreadshoot
       yield self
     end
 
-    # outputs the worksheet as OOXML
+    # Outputs the worksheet as OOXML
     def to_s
       @xml ||= Builder::XmlMarkup.new.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
         unless @column_widths.empty?
@@ -373,12 +377,24 @@ class Spreadshoot
       end
     end
 
+    # Creates a row within a worksheet.
+    #
+    # @param [Hash] options options to create a row with.
+    # @return created row
     def row options = {}, &block
       row = @current_table.row options, &block
       @row_index += 1
       row
     end
 
+    # Creates a table within a worksheet.
+    #
+    # @param [Hash] options Options to initialize table with.
+    # @option options [Symbol] :direction (:vertical) Orientation of the table (could be :horizontal or :vertical)
+    # @option options [Table] :next_to Optionally, place the table to the right of the already existing table
+    # @option options [Fixnum] :row_topleft Place the tables top left corner absolutely to a certain row
+    # @option options [Fixnum] :col_topleft Place the tables top left corner absolutely to a certain column
+    # @return [Table] created table
     def table options = {}
       @current_table = table = Table.new(self, options)
       yield table
@@ -388,6 +404,7 @@ class Spreadshoot
       table
     end
 
+    # Not intended to be used directly.
     def set_col_width col, width
       @column_widths[col] = width
     end
