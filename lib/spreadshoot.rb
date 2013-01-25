@@ -62,6 +62,12 @@ class Spreadshoot
                          14
                        when :percent
                          10
+                       when :percent_rounded
+                         9
+                       when :currency
+                         7
+                       when :two_decimals
+                         2
                        else
                          value
                        end
@@ -336,6 +342,7 @@ class Spreadshoot
     attr_reader :title, :xml, :spreadsheet, :row_index, :col_index, :cells
 
     # Not intended to be called directly. Use Spreadshoot#worksheet to create a worksheet.
+    # @private
     def initialize spreadsheet, title, options = {}
       @cells = {}
       @spreadsheet = spreadsheet
@@ -351,6 +358,7 @@ class Spreadshoot
     end
 
     # Outputs the worksheet as OOXML
+    # @private
     def to_s
       @xml ||= Builder::XmlMarkup.new.worksheet(:xmlns => "http://schemas.openxmlformats.org/spreadsheetml/2006/main") do |ws|
         unless @column_widths.empty?
@@ -379,6 +387,7 @@ class Spreadshoot
 
     # Creates a row within a worksheet.
     #
+    # @see Table#row
     # @param [Hash] options options to create a row with.
     # @return created row
     def row options = {}, &block
@@ -405,6 +414,7 @@ class Spreadshoot
     end
 
     # Not intended to be used directly.
+    # @private
     def set_col_width col, width
       @column_widths[col] = width
     end
@@ -416,6 +426,8 @@ class Spreadshoot
   class Table
     attr_reader :worksheet, :direction, :col_max, :row_max, :col_index, :row_index, :row_topleft, :col_topleft
 
+    # @private
+    # @see Worksheet#table
     def initialize worksheet, options = {}
       @worksheet = worksheet
       @options = options
@@ -474,11 +486,22 @@ class Spreadshoot
 
   # A row of a table. The table could be horizontal oriented, or vertical oriented.
   class Row
+    # @private
+    # @note Do not call directly, rows should be created using Table#row or #Worksheet#row methods
+    #
+    # @see Table#row
+    # @see Worksheet#row
     def initialize table, options = {}
       @table = table
       @options = options
     end
 
+    # Creates a cell within a row.
+    #
+    # @param [Object] value a value to write to the cell
+    # @param [Hash] options additional options applied (formatting, etc)
+    #
+    # @return created Cell instance
     def cell value = nil, options = {}
       cell = Cell.new(@table, value, @options.merge(options))
       @table.worksheet.cells[@table.current_row] ||= {}
@@ -494,13 +517,17 @@ class Spreadshoot
 
   # A cell within a row.
   class Cell
+    @alpha_indices ||= ('A'..'ZZ').to_a
     # maps numeric column indices to letter based:
     # 0 -> 'A', 1 -> 'B', 26 -> 'AA' and so on
+    # @return [String]
     def self.alpha_index i
-      @alpha_indices ||= ('A'..'ZZ').to_a
       @alpha_indices[i]
     end
 
+    # @note Do not use directly, use Row#cell to create a cell.
+    # @private
+    # @see Row#cell
     def initialize table, value, options = {}
       @table = table
       @value = value
@@ -510,17 +537,23 @@ class Spreadshoot
       @options[:format] ||= :date if @value.is_a?(Date) || @value.is_a?(Time)
     end
 
+    # Zero-based index of the current column of the cell
+    # @return [Fixnum]
     def current_col
       @table.current_col
     end
 
+    # Zero-based index of the current row of the cell
+    # @return [Fixnum]
     def current_row
       @table.current_row
     end
 
-    # outputs the cell into the resulting xml
+    # Outputs the cell into the resulting xml
+    # @private
     def output xn_parent
       r = {:r => @coords}
+      @options = @value if @value.is_a?(Hash)
       if style = @table.worksheet.spreadsheet.style(@options)
         r.merge!(:s => style + 1)
       end
@@ -529,7 +562,6 @@ class Spreadshoot
         i = @table.worksheet.spreadsheet.ss_index(@value)
         xn_parent.c(r.merge(:t => 's')){ |xc| xc.v(i) }
       when Hash # no @value, formula in options
-        @options = @value
         xn_parent.c(r) do |xc|
           xc.f(@options[:formula])
         end
@@ -544,6 +576,9 @@ class Spreadshoot
       end
     end
 
+    # Outputs cell coordinates (e.g. "C3", "AG41" and so on)
+    #
+    # @return [String]
     def to_s
       @coords
     end
