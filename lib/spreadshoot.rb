@@ -66,6 +66,10 @@ class Spreadshoot
                          9
                        when :currency
                          7
+                       when :thousands_separated_decimals
+                         4
+                       when :thousands_separated
+                         3
                        when :two_decimals
                          2
                        else
@@ -122,10 +126,12 @@ class Spreadshoot
     end
 
     filename = File.absolute_path(filename)
+    current_dir = FileUtils.pwd
     FileUtils.chdir(dir)
     File.delete(filename) if File.exists?(filename)
     # zip the result
     puts `zip -r #{filename} ./`
+    FileUtils.chdir(current_dir)
     FileUtils.rm_rf(dir)
   end
 
@@ -455,8 +461,12 @@ class Spreadshoot
       @row_index = val
     end
 
-    def row options = {}
+    def row *args
+      options = args.last.is_a?(Hash) ? args.pop : {}
       row = Row.new(self, options)
+      args.each do |cell_val|
+        row.cell(cell_val, options)
+      end
       yield(row) if block_given?
 
       if @direction == :vertical

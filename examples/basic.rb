@@ -119,6 +119,28 @@ spreadsheet = Spreadshoot.new do |s|
       end
     end
   end
+
+  s.worksheet('Cell formats') do |w|
+    w.table do |t|
+      t.row do |r|
+        r.cell 'No formatting'
+        r.cell 0.345
+      end
+      t.row do |r|
+        r.cell 'Percent'
+        r.cell 0.345, :format => :percent
+      end
+      t.row do |r|
+        r.cell 'Rounded percent'
+        r.cell 0.345, :format => :percent_rounded
+      end
+      t.row do |r|
+        r.cell 'Currency'
+        r.cell 0.345, :format => :currency
+      end
+      t.row 'Shorthand for', 'multiple cells'
+    end
+  end
 end
 
 spreadsheet.dump
